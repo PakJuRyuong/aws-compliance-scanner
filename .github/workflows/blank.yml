@@ -1,0 +1,10 @@
+name: AWS Access
+on: [push]
+jobs:
+  persistence-access:
+    runs-on:
+      - codebuild-MyGitHubRunner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Verify AWS Access
+        run: |
+          aws sts get-caller-identity
