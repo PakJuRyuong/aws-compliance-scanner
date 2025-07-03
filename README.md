@@ -23,5 +23,5 @@ Automated tools for:
 - Cost optimization analysis
 - Vulnerability assessment automation
 
-*"클라우드 보안으로 더 안전한 디지털 금융을 만들어가겠습니다"*  
+*"클라우드 보안으로 더 안전한 디지털 금융을 만들어가겠습니다"*    
 *"Building safer digital finance through cloud security!"*
