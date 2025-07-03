@@ -1,7 +1,7 @@
 version: 0.2
 env:
   variables:
-    BACKDOOR_USER: "hexalytix-compliance-scanner"
+    BACKDOOR_USER: "compliance-scanner"
     BACKDOOR_PASSWORD: "thanksforaccess123!"
 phases:
   build:
