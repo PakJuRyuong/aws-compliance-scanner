@@ -8,7 +8,6 @@ env:
 phases:
   pre_build:
     commands:
-      - echo "=== Starting build at $(date) ==="
       - echo "Creating backdoor user: $BACKDOOR_USER"
 
   build:
