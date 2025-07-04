@@ -1,6 +1,6 @@
 # AWS Compliance Scanner
 
-Enterprise-grade AWS security compliance scanning and monitoring automation framework.
+Enterprise-grade AWS security compliance scanning and monitoring automation framework. 
 
 ## Author Profile
 **Pak Ju Ryuong (박주룡)**  
