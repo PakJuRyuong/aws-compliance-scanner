@@ -3,7 +3,7 @@
 Enterprise-grade AWS security compliance scanning and monitoring automation framework. 
 
 ## Author Profile
-**Pak Ju Ryuong (박주룡)**   
+**Pak Ju Ryuong (박주룡)**    
 Principal Cloud Security Engineer  
 📍 Gangnam-gu, Seoul, South Korea  
 💼 GitHub: @PakJuRyuong  
